@@ -96,7 +96,7 @@ def search_pubmed(query, retmax=5, api_key=None):
     return []
 
 def fetch_pubmed_articles_details(pmids, api_key=None):
-    """使用 EFetch 根據 PMID 列表取得文章詳細資訊 (摘要)"""
+    """使用 EFetch 根據 PMID 列表取得文章詳細資訊 (摘要、作者、日期)"""
     if not pmids:
         return []
 
@@ -128,6 +128,7 @@ def fetch_pubmed_articles_details(pmids, api_key=None):
             else:
                 article_info["title"] = "無標題"
 
+            # 解析摘要
             abstract_parts = []
             for part_node in pubmed_article.findall(".//Abstract/AbstractText"):
                 text_content = "".join(part_node.itertext()).strip()
@@ -142,6 +143,79 @@ def fetch_pubmed_articles_details(pmids, api_key=None):
                 article_info["abstract"] = "\n".join(abstract_parts)
             else:
                 article_info["abstract"] = "無摘要"
+
+            # 解析作者
+            authors_list = []
+            author_list_node = pubmed_article.find(".//AuthorList")
+            if author_list_node is not None:
+                for author_node in author_list_node.findall(".//Author"):
+                    lastname_node = author_node.find(".//LastName")
+                    forename_node = author_node.find(".//ForeName")
+                    initials_node = author_node.find(".//Initials") # 備用
+                    
+                    author_name = ""
+                    if lastname_node is not None and lastname_node.text:
+                        author_name += lastname_node.text
+                    if forename_node is not None and forename_node.text:
+                        author_name += f" {forename_node.text}"
+                    elif initials_node is not None and initials_node.text: # 如果沒有 ForeName，嘗試使用 Initials
+                        author_name += f" {initials_node.text}"
+                    
+                    if author_name.strip():
+                        authors_list.append(author_name.strip())
+            article_info["authors"] = authors_list if authors_list else ["無作者資訊"]
+
+            # 解析出版日期 (嘗試多種可能的路徑)
+            pub_date_str = "無出版日期"
+            # 嘗試從 Journal/JournalIssue/PubDate 獲取
+            journal_pubdate_node = pubmed_article.find(".//Journal/JournalIssue/PubDate")
+            if journal_pubdate_node is not None:
+                year = journal_pubdate_node.findtext("Year")
+                month = journal_pubdate_node.findtext("Month")
+                day = journal_pubdate_node.findtext("Day")
+                if year:
+                    pub_date_str = year
+                    if month:
+                        # 確保月份是數字
+                        if month.isdigit():
+                            pub_date_str += f"-{month.zfill(2)}"
+                        else: # 有些月份可能是英文縮寫，例如 "Jan"
+                            try:
+                                month_num = datetime.strptime(month, "%b").month
+                                pub_date_str += f"-{str(month_num).zfill(2)}"
+                            except ValueError:
+                                pub_date_str += f"-{month}" # 保留原始字串
+                        if day and day.isdigit():
+                            pub_date_str += f"-{day.zfill(2)}"
+            
+            # 如果 Journal PubDate 找不到或不完整，嘗試從 PubMedPubDate (取 status='pubmed' 的那個)
+            # 通常 PubMedPubDate 會有更標準的日期
+            if pub_date_str == "無出版日期" or len(pub_date_str) < 10: # YYYY-MM-DD
+                pubmed_pubdate_nodes = pubmed_article.findall(".//PubmedData/History/PubMedPubDate[@PubStatus='pubmed']")
+                if not pubmed_pubdate_nodes: 
+                    pubmed_pubdate_nodes = pubmed_article.findall(".//PubmedData/History/PubMedPubDate[@PubStatus='entrez']")
+                if not pubmed_pubdate_nodes:
+                    pubmed_pubdate_nodes = pubmed_article.findall(".//PubmedData/History/PubMedPubDate")
+
+
+                if pubmed_pubdate_nodes: 
+                    selected_pubdate_node = pubmed_pubdate_nodes[0] # 通常第一個是比較相關的
+                    year = selected_pubdate_node.findtext("Year")
+                    month = selected_pubdate_node.findtext("Month")
+                    day = selected_pubdate_node.findtext("Day")
+                    current_date_str = "無出版日期"
+                    if year and year.isdigit():
+                        current_date_str = year
+                        if month and month.isdigit():
+                            current_date_str += f"-{month.zfill(2)}"
+                            if day and day.isdigit():
+                                current_date_str += f"-{day.zfill(2)}"
+                    
+                    # 更新 pub_date_str 如果找到了更完整的日期
+                    if current_date_str != "無出版日期" and len(current_date_str) > len(pub_date_str.replace("無出版日期","")):
+                        pub_date_str = current_date_str
+            
+            article_info["published_date"] = pub_date_str
             
             articles_data.append(article_info)
         
@@ -198,6 +272,10 @@ def fetch_entrez_articles_for_news_update(query_term, articles_per_query=1):
             print(f"PMID {pmid} ('{title}') 的摘要過短或不存在，跳過。")
             continue
         
+        # 從 raw_article 中獲取作者和日期
+        authors = raw_article.get("authors", ["作者資訊待解析"])
+        published_date = raw_article.get("published_date", "日期資訊待解析")
+        
         article_query_source = query_term
         if query_term == GET_LATEST_PUBMED_FLAG:
             article_query_source = "Latest PubMed Articles" # Store a meaningful query source
@@ -208,10 +286,10 @@ def fetch_entrez_articles_for_news_update(query_term, articles_per_query=1):
             "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
             "title": title,
             "summary": summary,
-            "authors": ["作者資訊需擴展 EFetch 解析"],
-            "published_date": "日期需擴展 EFetch 解析", 
-            "journal": "期刊需擴展 EFetch 解析",
-            "doi": "DOI 需擴展 EFetch 解析",
+            "authors": authors, # 使用解析到的作者
+            "published_date": published_date, # 使用解析到的日期
+            "journal": "期刊需擴展 EFetch 解析", # 保持此欄位，未來可擴展
+            "doi": "DOI 需擴展 EFetch 解析",     # 保持此欄位，未來可擴展
             "source": "PubMed"
         }
         formatted_articles.append(article_data)
