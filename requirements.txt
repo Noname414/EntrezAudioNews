@@ -1,0 +1,4 @@
+requests
+gtts
+google-genai
+pydantic 
