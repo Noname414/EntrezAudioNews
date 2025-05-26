@@ -1,12 +1,12 @@
 # Listen Research News
 
-這是一個自動抓取、翻譯和朗讀 EuropePMC 生醫研究文章摘要的網站專案。
+這是一個自動抓取、翻譯和朗讀 **Entrez PubMed** 生醫研究文章摘要的網站專案。
 
-網站連結：[https://noname414.github.io/listen-research-news/](https://noname414.github.io/listen-research-news/)
+網站連結：[https://noname414.github.io/EntrezAudioNews/](https://noname414.github.io/EntrezAudioNews/)
 
 ## 功能特色
 
-- 自動抓取 EuropePMC 最新生醫研究文章
+- 自動抓取 **Entrez PubMed** 最新生醫研究文章
 - 使用最新的 **Gemini 2.0 Flash** 和 **結構化輸出** 翻譯研究摘要為繁體中文
 - 生成生活化應用場景和創投推銷內容
 - 生成中文語音朗讀檔
@@ -48,11 +48,12 @@ class ArticleTranslation(BaseModel):
 
 ```bash
 python test_translation.py
+python test_entrez_api.py
 ```
 
 ## 依賴項目
 
-- `requests` - HTTP 請求庫，用於調用 EuropePMC API
+- `requests` - HTTP 請求庫，用於調用 **Entrez PubMed** API
 - `gtts` - 文字轉語音
 - `google-genai` - 新版 Google GenAI SDK
 - `pydantic` - 資料驗證和結構化輸出
@@ -61,7 +62,7 @@ python test_translation.py
 
 專案設定了 GitHub Actions，會自動執行以下任務：
 
-- **每小時**抓取最新的 EuropePMC 生醫研究文章
+- **每 3 小時**抓取最新的 **Entrez PubMed** 生醫研究文章
 - 使用 Gemini 2.0 Flash 生成結構化的中文翻譯和語音檔
 - 將更新的資料提交回 `main` 分支
 - 將網站檔案部署到 `gh-pages` 分支，供 GitHub Pages 展示
