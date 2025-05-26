@@ -66,7 +66,7 @@ python test_translation.py
 - 將更新的資料提交回 `main` 分支
 - 將網站檔案部署到 `gh-pages` 分支，供 GitHub Pages 展示
 
-網站部屬在 GitHub Pages，連結為：[https://noname414.github.io/listen-research-news/](https://noname414.github.io/listen-research-news/)
+網站部屬在 GitHub Pages，連結為：[https://noname414.github.io/EntrezAudioNews/](https://noname414.github.io/EntrezAudioNews/)
 
 ## 更新日誌
 
