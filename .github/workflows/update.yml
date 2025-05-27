@@ -1,3 +1,4 @@
+# filepath: .github/workflows/update.yml
 name: Update News and Deploy
 
 on:
