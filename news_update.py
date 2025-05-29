@@ -3,7 +3,8 @@ import re
 import requests
 import json
 import os
-from gtts import gTTS
+# from gtts import gTTS # Removed gTTS
+import subprocess # Added for ffmpeg
 from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import List
@@ -342,11 +343,78 @@ def summarize_to_chinese(title, summary):
 
 # === 將摘要轉成語音檔 ===
 def save_audio(text, filename):
+    """Generates audio from text using Gemini API and saves it as an MP3 file via ffmpeg."""
     try:
-        tts = gTTS(text, lang='zh-tw')
-        tts.save(filename)
+        print(f"Attempting to generate audio for: {filename}")
+        # Generate audio using Gemini API
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts", # As specified
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name='Kore')
+                    )
+                )
+            )
+        )
+        
+        # Extract PCM audio data
+        pcm_data = response.candidates[0].content.parts[0].inline_data.data
+        print(f"Successfully received {len(pcm_data)} bytes of PCM data from Gemini API.")
+
+        # Convert PCM to MP3 using ffmpeg
+        # Assuming PCM is s16le, 24kHz, mono (common defaults for Gemini TTS)
+        ffmpeg_command = [
+            'ffmpeg',
+            '-f', 's16le',      # Input format: 16-bit signed little-endian PCM
+            '-ar', '24000',     # Audio sample rate: 24kHz
+            '-ac', '1',         # Audio channels: 1 (mono)
+            '-i', '-',          # Input from stdin
+            '-y',               # Overwrite output file if it exists
+            filename            # Output MP3 file
+        ]
+
+        process = subprocess.run(
+            ffmpeg_command,
+            input=pcm_data,
+            capture_output=True,
+            check=False # Don't raise exception on non-zero exit, handle manually
+        )
+
+        if process.returncode == 0:
+            print(f"Audio successfully saved as MP3: {filename}")
+        else:
+            # Attempt to check if ffmpeg is installed
+            try:
+                subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                 print("Error: ffmpeg command failed. It might not be installed or not in PATH.")
+                 print("Please install ffmpeg and ensure it's accessible in your system's PATH.")
+            
+            print(f"ffmpeg conversion failed. Return code: {process.returncode}")
+            print(f"ffmpeg stdout: {process.stdout.decode(errors='ignore')}")
+            print(f"ffmpeg stderr: {process.stderr.decode(errors='ignore')}")
+            # Optionally, save the raw PCM data for debugging
+            # with open(filename + ".pcm", "wb") as f_pcm:
+            #     f_pcm.write(pcm_data)
+            # print(f"Raw PCM data saved to {filename}.pcm for debugging.")
+
+    # except types.BrokenResponseError as e: # This specific exception type does not exist under types
+    #     print(f"Gemini API audio generation failed - BrokenResponseError: {e}")
+    #     print(f"Response details: {e.response}")
+    except genai.errors.ClientError as e: # Specifically catch ClientError for invalid API key issues
+        print(f"Gemini API audio generation failed - ClientError: {e}")
+    except AttributeError as e:
+        # This can happen if the response structure is not as expected
+        # e.g., response.candidates might be empty or parts[0].inline_data missing
+        print(f"Gemini API audio generation failed - AttributeError: {e}. Unexpected response structure.")
+        # print(f"Full API response: {response}") # Be careful with printing large responses
+    except FileNotFoundError:
+        print("Error: ffmpeg not found. Please install ffmpeg and ensure it's in your PATH.")
     except Exception as e:
-        print(f"語音生成失敗: {e}")
+        print(f"An unexpected error occurred in save_audio: {e}")
 
 # === 主流程 ===
 def main():
